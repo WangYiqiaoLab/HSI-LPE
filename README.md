@@ -13,25 +13,12 @@ Brain homeostasis is fundamental to cognitive function, yet its disruption by ne
 ## 📁 Repository Structure
 
 ```
-├── data/                         # Processed and raw data used in the study
-│   ├── scRNAseq/                 # Single-cell RNA sequencing datasets
-│   ├── flow_cytometry/          # Flow cytometry FCS files and gating strategy
-│   └── histology/               # Imaging data and quantification outputs
-│
 ├── scripts/                     # Scripts used for data processing and analysis
 │   ├── scRNAseq_analysis.R      # Main Seurat pipeline for single-cell analysis
-│   ├── DE_analysis.R            # Differential expression analysis code
-│   └── flow_analysis.R          # Flow cytometry quantification scripts
-│
-├── figures/                     # Code for generating figures and supplementary data
-│   ├── fig1_immune_landscape.R  # Main figure plotting (e.g., UMAP, barplots)
-│   └── supp_figs/               # Scripts for supplementary figures
-│
-├── results/                     # Output files from analysis
-│   └── DE_results/              # CSV files with differential expression stats
+│   └── DE_analysis.R            # Differential expression analysis code
 │
 ├── README.md                    # This file
-└── requirements.txt             # R or Python package dependencies (see below)
+└── requirements.txt             # R package dependencies (see below)
 ```
 
 ---
@@ -79,8 +66,9 @@ If you use this code, please cite:
 
 For questions regarding the code or data, please contact:
 
-* **\Yiqiao Wang** – \[[yiqiaowang@jnu.edu.cn](mailto:yiqiaowang@jnu.edu.cn)]
-* * **\Yuxi Guo** – \[[yuxi.guo@ki.se](mailto:yuxi.guo@ki.se)]
+**Yiqiao Wang** – \[[yiqiaowang@jnu.edu.cn](mailto:yiqiaowang@jnu.edu.cn)]
+
+**Yuxi Guo** – \[[yuxi.guo@ki.se](mailto:yuxi.guo@ki.se)]
 
 
 
