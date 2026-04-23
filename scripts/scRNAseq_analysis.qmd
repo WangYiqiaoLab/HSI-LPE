@@ -1,2 +1,1920 @@
-├── scripts/                     # Scripts used for data processing and analysis
-│   ├── scRNAseq_analysis.R 
+## QC
+
+{r}
+library(Seurat)
+
+library(tidyverse)
+library(gprofiler2)
+library(DoubletFinder)
+library(cowplot)
+
+
+
+{r}
+DATA <- readRDS("../Data/Seurat_Object/Mu93FB_1.rds")
+
+{r}
+DATA$SampleID <- "Mu93_1"
+DATA$Condition <- "Mu93"
+
+Start QC
+
+{r}
+DATA <- PercentageFeatureSet(DATA, "^mt-", col.name = "percent_mito")
+DATA <- PercentageFeatureSet(DATA, "^Rp[sl]", col.name = "percent_ribo")
+DATA <- PercentageFeatureSet(DATA, "^Hb[^(p|e|s)]", col.name = "percent_hb") #Percentage hemoglobin genes - includes all genes starting with HB except HBP.
+DATA <- PercentageFeatureSet(DATA, "Pecam1|Pf4", col.name = "percent_plat")
+
+DATA <- CellCycleScoring(DATA %>% NormalizeData(), g2m.features = gorth(cc.genes.updated.2019$g2m.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name, 
+    s.features= gorth(cc.genes.updated.2019$s.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name,set.ident = T)
+
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "Condition", pt.size = 0.1,ncol = 3) + NoLegend()
+
+
+save QC
+
+{r save QC}
+pdf("../Result/qc/QC_raw_Mu93_1.pdf", width = 10, height = 8)
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "Condition", pt.size = 0.1,ncol = 4, alpha = 0.4) + NoLegend()
+dev.off()
+
+Check top20 genes
+
+{r Check top20 genes}
+
+C <- DATA@assays$RNA@layers$counts 
+rownames(C) <- rownames(DATA)
+colnames(C) <- colnames(DATA)
+C@x <- C@x / rep.int(colSums(C), diff(C@p)) * 100
+
+boxplot(as.matrix(t(C[order(Matrix::rowSums(C), decreasing = T)[20:1], ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+#if you couldn't see the full gene names, just show the picture in a new window
+
+
+From QC plots, there are some blood cells. So I would guess after I remove thoses cells, the dominant Hbb-bs here would disappear. I will check it later.
+
+Save top20 genes
+
+{r Save top20 genes}
+pdf("../Result/qc/top20_Mu93_1.pdf", width = 12, height = 6)
+boxplot(as.matrix(t(C[most_expressed, ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+dev.off()
+rm(C)
+
+QC
+
+{r QC}
+dim(DATA)
+#Depend on the QC plot, change the QC matrix
+DATA <- subset(DATA, subset = nFeature_RNA > 200 & percent_mito < 10 & percent_hb < 10 & percent_ribo < 20 ) #,nFeature_RNA<4000 Run doubletfinder instead & percent_ribo >5 
+dim(DATA) #Check cell number
+
+[1] 28804 21221 [1] 28804 21165
+
+DoubletFinder
+
+Since we got much more cells than 10000, I will increase the doublet rate to 0.12.
+
+{r doubletfinder}
+
+
+DATA <- NormalizeData(DATA)
+DATA <- FindVariableFeatures(DATA)
+DATA <- ScaleData(DATA, vars.to.regress = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb","percent_plat","S.Score", "G2M.Score"))
+DATA <- RunPCA(DATA, npcs = 30)
+DATA <- RunUMAP(DATA, dims = 1:30)
+
+nExp <- round(ncol(DATA) * 0.12)  # expect 8% doublets for 10000 loaded cells (Check 10X loaded chart)
+DATA <- doubletFinder(DATA, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:30)
+# name of the DF prediction can change, so extract the correct column name.
+colnames(DATA@meta.data)[grepl("DF.classification", colnames(DATA@meta.data))]
+DATA$DF <-  DATA$DF.classifications_0.25_0.09_2540
+plot_grid(DimPlot(DATA, group.by = "orig.ident") + NoAxes(), 
+    DimPlot(DATA, group.by = "DF") + NoAxes(), VlnPlot(DATA, features = "nFeature_RNA", group.by = "DF")
+    #,FeaturePlot(DATA, features = c("Mki67","Pcna"))
+    ,ncol = 2)
+
+
+{r}
+saveRDS(DATA, "../Data/Seurat_Object/Mu93_1_QCed.rds")
+
+#_Mu93FB2
+
+{r}
+DATA <- readRDS("../Data/Seurat_Object/Mu93FB_2.rds")
+
+{r}
+DATA$SampleID <- "Mu93_2"
+DATA$Condition <- "Mu93"
+
+Start QC
+
+{r}
+DATA <- PercentageFeatureSet(DATA, "^mt-", col.name = "percent_mito")
+DATA <- PercentageFeatureSet(DATA, "^Rp[sl]", col.name = "percent_ribo")
+DATA <- PercentageFeatureSet(DATA, "^Hb[^(p|e|s)]", col.name = "percent_hb") #Percentage hemoglobin genes - includes all genes starting with HB except HBP.
+DATA <- PercentageFeatureSet(DATA, "Pecam1|Pf4", col.name = "percent_plat")
+
+DATA <- CellCycleScoring(DATA %>% NormalizeData(), g2m.features = gorth(cc.genes.updated.2019$g2m.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name, 
+    s.features= gorth(cc.genes.updated.2019$s.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name,set.ident = T)
+
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "Condition", pt.size = 0.1,ncol = 3) + NoLegend()
+
+
+save QC
+
+{r save QC}
+pdf("../Result/qc/QC_raw_Mu93_2.pdf", width = 10, height = 8)
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "SampleID", pt.size = 0.1,ncol = 4, alpha = 0.4) + NoLegend()
+dev.off()
+
+Check top20 genes
+
+{r Check top20 genes}
+
+C <- DATA@assays$RNA@layers$counts 
+rownames(C) <- rownames(DATA)
+colnames(C) <- colnames(DATA)
+C@x <- C@x / rep.int(colSums(C), diff(C@p)) * 100
+
+boxplot(as.matrix(t(C[order(Matrix::rowSums(C), decreasing = T)[20:1], ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+#if you couldn't see the full gene names, just show the picture in a new window
+
+
+From QC plots, there are some blood cells. So I would guess after I remove thoses cells, the dominant Hbb-bs here would disappear. I will check it later.
+
+Save top20 genes
+
+{r Save top20 genes}
+pdf("../Result/qc/top20_Mu93_2.pdf", width = 12, height = 6)
+boxplot(as.matrix(t(C[most_expressed, ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+dev.off()
+rm(C)
+
+QC
+
+{r QC}
+dim(DATA)
+#Depend on the QC plot, change the QC matrix
+DATA <- subset(DATA, subset = nFeature_RNA > 200 & nFeature_RNA < 7500 & nCount_RNA <40000& percent_mito < 10 & percent_hb < 10 & percent_ribo < 20 ) #,nFeature_RNA<4000 Run doubletfinder instead & percent_ribo >5 
+dim(DATA) #Check cell number
+
+[1] 29085 27145 [1] 29085 27084 [1] 29085 26929
+
+DoubletFinder
+
+Since we got much more cells than 10000, I will increase the doublet rate to 0.12.
+
+{r doubletfinder}
+
+
+DATA <- NormalizeData(DATA)
+DATA <- FindVariableFeatures(DATA)
+DATA <- ScaleData(DATA, vars.to.regress = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb","percent_plat","S.Score", "G2M.Score"))
+DATA <- RunPCA(DATA, npcs = 30)
+DATA <- RunUMAP(DATA, dims = 1:30)
+
+nExp <- round(ncol(DATA) * 0.08)  # expect 8% doublets for 10000 loaded cells (Check 10X loaded chart), 8% for 20k cells if it is v4 chip or v3,1 HT chip.
+DATA <- doubletFinder(DATA, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:30)
+# name of the DF prediction can change, so extract the correct column name.
+colnames(DATA@meta.data)[grepl("DF.classification", colnames(DATA@meta.data))]
+DATA$DF <-  DATA$DF.classifications_0.25_0.09_2154
+plot_grid(DimPlot(DATA, group.by = "orig.ident") + NoAxes(), 
+    DimPlot(DATA, group.by = "DF") + NoAxes(), VlnPlot(DATA, features = "nFeature_RNA", group.by = "DF")
+    #,FeaturePlot(DATA, features = c("Mki67","Pcna"))
+    ,ncol = 2)
+
+
+3250 to 2154
+
+{r}
+saveRDS(DATA, "../Data/Seurat_Object/Mu93_2_QCed.rds")
+
+Mu93FB3
+
+{r}
+DATA <- readRDS("../Data/Seurat_Object/Mu93FB_3.rds")
+
+{r}
+DATA$SampleID <- "Mu93_3"
+DATA$Condition <- "Mu93"
+
+Start QC
+
+{r}
+DATA <- PercentageFeatureSet(DATA, "^mt-", col.name = "percent_mito")
+DATA <- PercentageFeatureSet(DATA, "^Rp[sl]", col.name = "percent_ribo")
+DATA <- PercentageFeatureSet(DATA, "^Hb[^(p|e|s)]", col.name = "percent_hb") #Percentage hemoglobin genes - includes all genes starting with HB except HBP.
+DATA <- PercentageFeatureSet(DATA, "Pecam1|Pf4", col.name = "percent_plat")
+
+DATA <- CellCycleScoring(DATA %>% NormalizeData(), g2m.features = gorth(cc.genes.updated.2019$g2m.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name, 
+    s.features= gorth(cc.genes.updated.2019$s.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name,set.ident = T)
+
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "SampleID", pt.size = 0.1,ncol = 3) + NoLegend()
+
+
+save QC
+
+{r save QC}
+pdf("../Result/qc/QC_raw_Mu93_3.pdf", width = 10, height = 8)
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "SampleID", pt.size = 0.1,ncol = 4, alpha = 0.4) + NoLegend()
+dev.off()
+
+Check top20 genes
+
+{r Check top20 genes}
+
+C <- DATA@assays$RNA@layers$counts 
+rownames(C) <- rownames(DATA)
+colnames(C) <- colnames(DATA)
+C@x <- C@x / rep.int(colSums(C), diff(C@p)) * 100
+
+boxplot(as.matrix(t(C[order(Matrix::rowSums(C), decreasing = T)[20:1], ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+#if you couldn't see the full gene names, just show the picture in a new window
+
+
+From QC plots, there are some blood cells. So I would guess after I remove thoses cells, the dominant Hbb-bs here would disappear. I will check it later.
+
+Save top20 genes
+
+{r Save top20 genes}
+pdf("../Result/qc/top20_Mu93_3.pdf", width = 12, height = 6)
+boxplot(as.matrix(t(C[order(Matrix::rowSums(C), decreasing = T)[20:1], ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+dev.off()
+rm(C)
+
+QC
+
+{r QC}
+dim(DATA)
+#Depend on the QC plot, change the QC matrix
+DATA <- subset(DATA, subset = nFeature_RNA > 200 & nFeature_RNA < 7500 & nCount_RNA <40000 & percent_mito < 10 & percent_hb < 10 & percent_ribo < 20 ) #,nFeature_RNA<4000 Run doubletfinder instead & percent_ribo >5 
+dim(DATA) #Check cell number
+
+[1] 28724 26465 [1] 28724 26447 [1] 28724 26345
+
+DoubletFinder
+
+Since we got much more cells than 10000, I will increase the doublet rate to 0.12.
+
+{r doubletfinder}
+
+DATA <- NormalizeData(DATA)
+DATA <- FindVariableFeatures(DATA)
+DATA <- ScaleData(DATA, vars.to.regress = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb","percent_plat","S.Score", "G2M.Score"))
+DATA <- RunPCA(DATA, npcs = 30)
+DATA <- RunUMAP(DATA, dims = 1:30)
+
+nExp <- round(ncol(DATA) * 0.08)  # expect 8% doublets for 10000 loaded cells (Check 10X loaded chart)
+DATA <- doubletFinder(DATA, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:30)
+# name of the DF prediction can change, so extract the correct column name.
+colnames(DATA@meta.data)[grepl("DF.classification", colnames(DATA@meta.data))]
+DATA$DF <-  DATA$DF.classifications_0.25_0.09_2108
+plot_grid(DimPlot(DATA, group.by = "orig.ident") + NoAxes(), 
+    DimPlot(DATA, group.by = "DF") + NoAxes(), VlnPlot(DATA, features = "nFeature_RNA", group.by = "DF")
+    #,FeaturePlot(DATA, features = c("Mki67","Pcna"))
+    ,ncol = 2)
+
+
+3174 to 2108
+
+{r}
+saveRDS(DATA, "../Data/Seurat_Object/Mu93_3_QCed.rds")
+
+MuLI1
+
+{r}
+DATA <- readRDS("../Data/Seurat_Object/MuLIFB_1.rds")
+
+{r}
+DATA$SampleID <- "MuLI_1"
+DATA$Condition <- "MuLI"
+
+Start QC
+
+{r}
+DATA <- PercentageFeatureSet(DATA, "^mt-", col.name = "percent_mito")
+DATA <- PercentageFeatureSet(DATA, "^Rp[sl]", col.name = "percent_ribo")
+DATA <- PercentageFeatureSet(DATA, "^Hb[^(p|e|s)]", col.name = "percent_hb") #Percentage hemoglobin genes - includes all genes starting with HB except HBP.
+DATA <- PercentageFeatureSet(DATA, "Pecam1|Pf4", col.name = "percent_plat")
+
+DATA <- CellCycleScoring(DATA %>% NormalizeData(), g2m.features = gorth(cc.genes.updated.2019$g2m.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name, 
+    s.features= gorth(cc.genes.updated.2019$s.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name,set.ident = T)
+
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "Condition", pt.size = 0.1,ncol = 3) + NoLegend()
+
+
+save QC
+
+{r save QC}
+pdf("../Result/qc/QC_raw_MuLI_1.pdf", width = 10, height = 8)
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "Condition", pt.size = 0.1,ncol = 4, alpha = 0.4) + NoLegend()
+dev.off()
+
+Check top20 genes
+
+{r Check top20 genes}
+
+C <- DATA@assays$RNA@layers$counts 
+rownames(C) <- rownames(DATA)
+colnames(C) <- colnames(DATA)
+C@x <- C@x / rep.int(colSums(C), diff(C@p)) * 100
+
+boxplot(as.matrix(t(C[order(Matrix::rowSums(C), decreasing = T)[20:1], ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+#if you couldn't see the full gene names, just show the picture in a new window
+
+
+From QC plots, there are some blood cells. So I would guess after I remove thoses cells, the dominant Hbb-bs here would disappear. I will check it later.
+
+Save top20 genes
+
+{r Save top20 genes}
+pdf("../Result/qc/top20_MuLI_1.pdf", width = 12, height = 6)
+boxplot(as.matrix(t(C[order(Matrix::rowSums(C), decreasing = T)[20:1], ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+dev.off()
+rm(C)
+
+QC
+
+{r QC}
+dim(DATA)
+#Depend on the QC plot, change the QC matrix
+DATA <- subset(DATA, subset = nFeature_RNA > 200  & nFeature_RNA < 7500 & nCount_RNA <40000&  percent_mito < 10 & percent_hb < 10 & percent_ribo < 20 ) #,nFeature_RNA<4000 Run doubletfinder instead & percent_ribo >5 
+dim(DATA) #Check cell number
+
+[1] 28426 19409 [1] 28426 19378 [1] 28426 19324
+
+DoubletFinder
+
+Since we got much more cells than 10000, I will increase the doublet rate to 0.12.
+
+{r doubletfinder}
+
+
+DATA <- NormalizeData(DATA)
+DATA <- FindVariableFeatures(DATA)
+DATA <- ScaleData(DATA, vars.to.regress = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb","percent_plat","S.Score", "G2M.Score"))
+DATA <- RunPCA(DATA, npcs = 30)
+DATA <- RunUMAP(DATA, dims = 1:30)
+
+nExp <- round(ncol(DATA) * 0.08)  # expect 8% doublets for 10000 loaded cells (Check 10X loaded chart)
+DATA <- doubletFinder(DATA, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:30)
+# name of the DF prediction can change, so extract the correct column name.
+colnames(DATA@meta.data)[grepl("DF.classification", colnames(DATA@meta.data))]
+DATA$DF <-  DATA$DF.classifications_0.25_0.09_1546
+plot_grid(DimPlot(DATA, group.by = "orig.ident") + NoAxes(), 
+    DimPlot(DATA, group.by = "DF") + NoAxes(), VlnPlot(DATA, features = "nFeature_RNA", group.by = "DF")
+    #,FeaturePlot(DATA, features = c("Mki67","Pcna"))
+    ,ncol = 2)
+
+
+2325 to 1546
+
+{r}
+saveRDS(DATA, "../Data/Seurat_Object/MuLI_1_QCed.rds")
+
+MuLIFB2
+
+{r}
+DATA <- readRDS("../Data/Seurat_Object/MuLIFB_2.rds")
+
+{r}
+DATA$SampleID <- "MuLI_2"
+DATA$Condition <- "MuLI"
+
+Start QC
+
+{r}
+DATA <- PercentageFeatureSet(DATA, "^mt-", col.name = "percent_mito")
+DATA <- PercentageFeatureSet(DATA, "^Rp[sl]", col.name = "percent_ribo")
+DATA <- PercentageFeatureSet(DATA, "^Hb[^(p|e|s)]", col.name = "percent_hb") #Percentage hemoglobin genes - includes all genes starting with HB except HBP.
+DATA <- PercentageFeatureSet(DATA, "Pecam1|Pf4", col.name = "percent_plat")
+
+DATA <- CellCycleScoring(DATA %>% NormalizeData(), g2m.features = gorth(cc.genes.updated.2019$g2m.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name, 
+    s.features= gorth(cc.genes.updated.2019$s.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name,set.ident = T)
+
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "SampleID", pt.size = 0.1,ncol = 3) + NoLegend()
+
+
+save QC
+
+{r save QC}
+pdf("../Result/qc/QC_raw_MuLI_2.pdf", width = 10, height = 8)
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "SampleID", pt.size = 0.1,ncol = 4, alpha = 0.4) + NoLegend()
+dev.off()
+
+Check top20 genes
+
+{r Check top20 genes}
+
+C <- DATA@assays$RNA@layers$counts 
+rownames(C) <- rownames(DATA)
+colnames(C) <- colnames(DATA)
+C@x <- C@x / rep.int(colSums(C), diff(C@p)) * 100
+
+boxplot(as.matrix(t(C[order(Matrix::rowSums(C), decreasing = T)[20:1], ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+#if you couldn't see the full gene names, just show the picture in a new window
+
+
+From QC plots, there are some blood cells. So I would guess after I remove thoses cells, the dominant Hbb-bs here would disappear. I will check it later.
+
+Save top20 genes
+
+{r Save top20 genes}
+pdf("../Result/qc/top20_MuLI_2.pdf", width = 12, height = 6)
+boxplot(as.matrix(t(C[order(Matrix::rowSums(C), decreasing = T)[20:1], ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+dev.off()
+rm(C)
+
+QC
+
+{r QC}
+dim(DATA)
+#Depend on the QC plot, change the QC matrix
+DATA <- subset(DATA, subset = nFeature_RNA > 200 & percent_mito < 10 & percent_hb < 10 & percent_ribo < 20 ) #,nFeature_RNA<4000 Run doubletfinder instead & percent_ribo >5 
+dim(DATA) #Check cell number
+
+[1] 28629 22307 [1] 28629 22286
+
+DoubletFinder
+
+Since we got much more cells than 10000, I will increase the doublet rate to 0.12.
+
+{r doubletfinder}
+
+
+DATA <- NormalizeData(DATA)
+DATA <- FindVariableFeatures(DATA)
+DATA <- ScaleData(DATA, vars.to.regress = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb","percent_plat","S.Score", "G2M.Score"))
+DATA <- RunPCA(DATA, npcs = 30)
+DATA <- RunUMAP(DATA, dims = 1:30)
+
+nExp <- round(ncol(DATA) * 0.12)  # expect 8% doublets for 10000 loaded cells (Check 10X loaded chart)
+DATA <- doubletFinder(DATA, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:30)
+# name of the DF prediction can change, so extract the correct column name.
+colnames(DATA@meta.data)[grepl("DF.classification", colnames(DATA@meta.data))]
+DATA$DF <-  DATA$DF.classifications_0.25_0.09_2674
+plot_grid(DimPlot(DATA, group.by = "orig.ident") + NoAxes(), 
+    DimPlot(DATA, group.by = "DF") + NoAxes(), VlnPlot(DATA, features = "nFeature_RNA", group.by = "DF")
+    #,FeaturePlot(DATA, features = c("Mki67","Pcna"))
+    ,ncol = 2)
+
+
+{r}
+saveRDS(DATA, "../Data/Seurat_Object/MuLI_2_QCed.rds")
+
+MuLIFB3
+
+{r}
+DATA <- readRDS("../Data/Seurat_Object/MuLIFB_3.rds")
+
+{r}
+DATA$SampleID <- "MuLI_3"
+DATA$Condition <- "MuLI"
+
+Start QC
+
+{r}
+DATA <- PercentageFeatureSet(DATA, "^mt-", col.name = "percent_mito")
+DATA <- PercentageFeatureSet(DATA, "^Rp[sl]", col.name = "percent_ribo")
+DATA <- PercentageFeatureSet(DATA, "^Hb[^(p|e|s)]", col.name = "percent_hb") #Percentage hemoglobin genes - includes all genes starting with HB except HBP.
+DATA <- PercentageFeatureSet(DATA, "Pecam1|Pf4", col.name = "percent_plat")
+
+DATA <- CellCycleScoring(DATA %>% NormalizeData(), g2m.features = gorth(cc.genes.updated.2019$g2m.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name, 
+    s.features= gorth(cc.genes.updated.2019$s.genes, source_organism = "hsapiens", target_organism = "mmusculus")$ortholog_name,set.ident = T)
+
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "Condition", pt.size = 0.1,ncol = 3) + NoLegend()
+
+
+save QC
+
+{r save QC}
+pdf("../Result/qc/QC_raw_MuLI_3.pdf", width = 10, height = 8)
+VlnPlot(DATA, features = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb", "percent_plat","S.Score", "G2M.Score"),group.by = "SampleID", pt.size = 0.1,ncol = 4, alpha = 0.4) + NoLegend()
+dev.off()
+
+Check top20 genes
+
+{r Check top20 genes}
+
+C <- DATA@assays$RNA@layers$counts 
+rownames(C) <- rownames(DATA)
+colnames(C) <- colnames(DATA)
+C@x <- C@x / rep.int(colSums(C), diff(C@p)) * 100
+
+boxplot(as.matrix(t(C[order(Matrix::rowSums(C), decreasing = T)[20:1], ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+#if you couldn't see the full gene names, just show the picture in a new window
+
+
+From QC plots, there are some blood cells. So I would guess after I remove thoses cells, the dominant Hbb-bs here would disappear. I will check it later.
+
+Save top20 genes
+
+{r Save top20 genes}
+pdf("../Result/qc/top20_MuLI_3.pdf", width = 12, height = 6)
+boxplot(as.matrix(t(C[order(Matrix::rowSums(C), decreasing = T)[20:1], ])),
+    cex = 0.1, las = 1, xlab = "Percent counts per cell",
+    col = (scales::hue_pal())(20)[20:1], horizontal = TRUE
+)
+dev.off()
+rm(C)
+
+QC
+
+{r QC}
+dim(DATA)
+#Depend on the QC plot, change the QC matrix
+DATA <- subset(DATA, subset = nFeature_RNA > 200   & nFeature_RNA < 7500 & nCount_RNA <40000&   percent_mito < 10 & percent_hb < 10 & percent_ribo < 20 ) #,nFeature_RNA<4000 Run doubletfinder instead & percent_ribo >5 
+dim(DATA) #Check cell number
+
+[1] 28639 24321 [1] 28639 24309 [1] 28639 24263
+
+DoubletFinder
+
+Since we got much more cells than 10000, I will increase the doublet rate to 0.12.
+
+{r doubletfinder}
+
+
+DATA <- NormalizeData(DATA)
+DATA <- FindVariableFeatures(DATA)
+DATA <- ScaleData(DATA, vars.to.regress = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb","percent_plat","S.Score", "G2M.Score"))
+DATA <- RunPCA(DATA, npcs = 30)
+DATA <- RunUMAP(DATA, dims = 1:30)
+
+nExp <- round(ncol(DATA) * 0.08)  # expect 8% doublets for 10000 loaded cells (Check 10X loaded chart)
+DATA <- doubletFinder(DATA, pN = 0.25, pK = 0.09, nExp = nExp, PCs = 1:30)
+# name of the DF prediction can change, so extract the correct column name.
+colnames(DATA@meta.data)[grepl("DF.classification", colnames(DATA@meta.data))]
+DATA$DF <-  DATA$DF.classifications_0.25_0.09_1941
+plot_grid(DimPlot(DATA, group.by = "orig.ident") + NoAxes(), 
+    DimPlot(DATA, group.by = "DF") + NoAxes(), VlnPlot(DATA, features = "nFeature_RNA", group.by = "DF")
+    #,FeaturePlot(DATA, features = c("Mki67","Pcna"))
+    ,ncol = 2)
+
+
+2917 to 1941
+
+{r}
+saveRDS(DATA, "../Data/Seurat_Object/MuLI_3_QCed.rds")
+
+
+## Integration
+DATA[['RNA']] <- split(DATA[['RNA']], f = DATA$SampleID)
+
+DATA <- NormalizeData(DATA)
+DATA <- FindVariableFeatures(DATA)
+VariableFeatures(DATA) = SelectIntegrationFeatures5(DATA, nfeatures = 3000)
+DATA <- ScaleData(DATA,vars.to.regress = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb","percent_plat","S.Score","G2M.Score"))
+
+#DATA <- SCTransform(DATA,vars.to.regress = c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo", "percent_hb","percent_plat","S.Score","G2M.Score") )
+
+
+DATA <- RunPCA(DATA,npcs = 50)
+
+#unintegrated
+#DATA <- FindNeighbors(DATA, dims = 1:30, reduction = "pca")
+DATA <- RunUMAP(DATA, dims = 1:50, reduction = "pca", reduction.name = "umap.unintegrated")
+p1<-DimPlot(DATA, reduction = "umap.unintegrated",shuffle = T,label = T)+ggtitle("unintegrated")+NoLegend()
+#CCA
+DATA <- IntegrateLayers(
+  object = DATA, method = CCAIntegration,
+  orig.reduction = "pca", new.reduction = "integrated.cca")
+DATA <- FindNeighbors(DATA, reduction = "integrated.cca", dims = 1:30)
+DATA <- RunUMAP(DATA, reduction = "integrated.cca", dims = 1:50, reduction.name = "umap.cca")
+
+#Harmony
+DATA <- IntegrateLayers(
+  object = DATA, method = HarmonyIntegration,
+  orig.reduction = "pca", new.reduction = "harmony"
+)
+#DATA <- FindNeighbors(DATA, reduction = "harmony", dims = 1:30)
+DATA <- RunUMAP(DATA, reduction = "harmony", dims = 1:40, reduction.name = "umap.harmony")
+DimPlot(DATA,group.by = "Subtypes2", reduction = "umap.harmony", shuffle = T,label = T)+ggtitle("Harmony")
+
+## hdWGCNA
+
+```{bash}
+ml PDC/24.11
+ml R/4.4.2 Rbio/3.20-cpeGNU-24.11
+
+```
+
+```{r}
+.libPaths("/cfs/klemming/projects/supr/naiss2023-6-180/Yuxi/R_lib")
+#install.packages("ggplot2")
+#install.packages("rlang")
+library(Seurat)
+library(tidyverse)
+library(WGCNA)
+library(hdWGCNA)
+```
+
+You can add options to executable code like this
+
+```{r}
+DATA <- readRDS("DATA_final.rds")
+DATA <- SetIdent(DATA, value = "Celltypes")
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels =  c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs","MG"))
+DATA$Celltypes[WhichCells(DATA, idents = "MG")] <- "Microglia"
+DATA@reductions$UMAP <- DATA@reductions$umap.harmony30
+DATA@reductions$umap.harmony30 <- NULL
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels =  c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs"))
+```
+
+## IbNs
+
+```{r}
+#DATA <- readRDS("wgcna.rds") %>% JoinLayers()
+enableWGCNAThreads(nThreads = 8)
+DATA <- SetupForWGCNA(
+  DATA,
+  gene_select = "fraction", # the gene selection approach
+  fraction = 0.05, # fraction of cells that a gene needs to be expressed in order to be included
+  wgcna_name = "AD_treatment" # the name of the hdWGCNA experiment
+)
+
+DATA <- MetacellsByGroups(DATA, group.by=c("Celltypes", "SampleID"), reduction = "harmony",k = 25, max_shared = 10, ident.group = "Celltypes")
+
+table(DATA$metacell_grouping)
+DATA <- NormalizeMetacells(DATA)
+DATA <- SetDatExpr(DATA,  group_name= "IbNs",group.by = "Celltypes",assay = "RNA", layer = 'data')
+DATA <- TestSoftPowers(DATA, networkType = 'signed')
+plot_list <- PlotSoftPowers(DATA)
+
+patchwork::wrap_plots(plot_list, ncol=2)
+#saveRDS(DATA, "wgcna.rds")
+```
+
+```{r}
+DATA <- readRDS("wgcna.rds")
+
+power_table <- GetPowerTable(DATA)
+power_table
+```
+
+```{r}
+DATA <- ConstructNetwork(
+  DATA,
+  tom_name = 'IbNs_tom', # name of the topoligical overlap matrix written to disk
+  overwrite_tom = T
+)
+
+pdf("IbNs Dedrogram.pdf", width = 8, height = 4)
+PlotDendrogram(DATA, main='IbNs hdWGCNA Nodule Dendrogram')
+dev.off()
+
+```
+
+Soft_power = 5.
+
+```{r}
+# need to run ScaleData first or else harmony throws an error:
+DATA <- ScaleData(DATAj, features=VariableFeatures(DATA))
+
+# compute all MEs in the full single-cell dataset
+DATA <- ModuleEigengenes(
+ DATA,
+ group.by.vars="SampleID"
+)
+```
+
+```{r}
+
+
+DATA <- ModuleConnectivity(DATA, group.by = "Celltypes",group_name = 'IbNs')
+DATA <- ResetModuleNames(
+  DATA,
+  new_name = "IbNs-M"
+)
+PlotKMEs(DATA, ncol=5)
+
+library(UCell)
+DATA <- ModuleExprScore(
+  DATA,
+  n_genes = 25,
+  method='UCell'
+)
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='hMEs', # plot the hMEs
+  order=TRUE # order so the points with highest hMEs are on top
+)
+
+# stitch together with patchwork
+pdf("hMEs_IbNs.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='scores', # plot the hub gene scores
+  order='shuffle', # order so cells are shuffled
+  ucell = TRUE # depending on Seurat vs UCell for gene scoring
+)
+pdf("Hub_IbNs.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+# stitch together with patchwork
+wrap_plots(plot_list, ncol=6)
+
+saveRDS(DATA, "IbNs_wgcna.rds")
+```
+
+```{r}
+modules <- GetModules(DATA)
+mods <- levels(modules$module); mods <- mods[mods != 'grey']
+
+# hubgene network
+g<-HubGeneNetworkPlot(
+  DATA,
+  n_hubs = 10, n_other=30,
+  edge_prop = 0.75,
+  mods = mods[c(9)], return_graph = T) 
+
+```
+
+```{r}
+
+pdf("IbN-M5_net.pdf", height = 4, width = 4)
+# 2. Plot using ggraph (which uses standard ggplot2 syntax)
+ggraph(g, layout = "fr") + # 'fr' is a standard force-directed layout
+  
+  # --- 1. CHANGE EDGE COLOR ---
+  geom_edge_link(
+    color = "#67a8cd",     # Set your custom edge color here
+    alpha = 0.4,            # Adjust transparency
+    width = 0.5
+  ) + 
+  
+  # --- 2. CHANGE NODE COLOR ---
+  geom_node_point(
+    color = "#67a8cd",    # Set your custom node color here
+    size = 2.5               # Adjust node size
+  ) + 
+  
+  # --- 3. ADD A BOX FOR THE LABELS ---
+  geom_node_label(
+    aes(label = label),      # 'name' is usually the default igraph attribute for gene names
+    fill = "white",         # Background color of the label box
+    color = "black",        # Text color inside the box
+    repel = T,           # Pushes labels apart so they don't overlap
+    label.padding = unit(0.2, "lines"), # Size of the box around the text
+    label.r = unit(0.2, "lines"),       # Rounded corners for the box
+    size = 2
+  ) +
+  
+  # Clean up the background
+  theme_graph()
+dev.off()
+```
+
+```{r}
+options(repr.plot.width=4, repr.plot.height=39)
+
+
+plots <- list()
+
+
+interest = c("IbNs-M3", "IbNs-M5", "IbNs-M9")
+# Replace this with your actual process of creating each graph
+for (i in 1:length(interest)) {
+  # Assuming `cur_network` is defined and updated for each graph creation
+  graph <- subset(cur_network, module1 == interest[i]) %>% 
+    igraph::graph_from_data_frame() %>%
+    tidygraph::as_tbl_graph(directed = FALSE) %>% 
+    tidygraph::activate(nodes)
+  
+  # Add the module name to the graph
+  V(graph)$module <- interest[i]
+  
+  # Get the top 25 hub genes for each module
+  hub_genes <- GetHubGenes(DATA, n_hubs = 25) %>% .
+hub <- ifelse(V(graph)$name %in% hub_genes, V(graph)$name, "")
+  
+  # Make the plot with ggraph
+  p <- ggraph(graph) + 
+    geom_edge_link(aes(alpha = weight, color = edge_color)) + 
+    geom_node_point(aes(color = module, size = 3)) +
+    geom_node_label(aes(label = hub), repel = TRUE, max.overlaps = Inf, fontface = 'italic', size = 6) +
+    scale_colour_manual(values = mod_cp) +
+    scale_edge_colour_manual(values = mod_cp) +
+    theme_void() + # use theme_void() instead of theme_nothing() to avoid errors
+    theme(legend.position = "none") # use theme(legend.position = "none") instead of NoLegend()
+  
+  # Store the plot in the list
+  plots[[i]] <- p
+}
+
+plots <- lapply(plots, function(p) p + theme(plot.margin = margin(5, 5, 5, 5))) 
+grid.arrange(grobs = plots, nrow = 11, ncol = 1)
+```
+
+```{r}
+
+DATA <- readRDS("IbNs_wgcna.rds")
+
+DATA <- RunModuleUMAP(
+  DATA,
+  n_hubs = 10, # number of hub genes to include for the UMAP embedding
+  n_neighbors=15, # neighbors parameter for UMAP
+  min_dist=0.1 # min distance between points in UMAP space
+)
+
+pdf("IbNs_ModuleUMAP.pdf", width = 10, height = 6)
+ModuleUMAPPlot(DATA,
+  edge.alpha=0.25,
+  sample_edges=TRUE,
+  edge_prop=0.1, # proportion of edges to sample (20% here)
+  label_hubs=2 ,# how many hub genes to plot per module?
+  keep_grey_edges=FALSE)
+dev.off()
+
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'IbNs' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'IbNs' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+head(DMEs)
+
+pdf("DME_lolli_IbNs.pdf", width =10, height = 7)
+PlotDMEsLollipop(
+  DATA, 
+  DMEs, 
+  wgcna_name='AD_treatment', 
+  pvalue = "p_val_adj")
+dev.off()
+
+pdf("DME_vol_IbNs.pdf", width =10, height = 7)
+PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+dev.off()
+```
+
+### Enrichment
+
+```{r}
+library(enrichR)
+library(GeneOverlap)
+```
+
+```{r}
+DATA <- RunEnrichr(
+  DATA,
+  dbs=c("GO_Biological_Process_2025", "Reactome_Pathways_2024"),
+  max_genes = 100 # use max_genes = Inf to choose all genes
+)
+
+# retrieve the output table
+enrich_df <- GetEnrichrTable(DATA)
+
+# look at the results
+head(enrich_df)
+write.csv(enrich_df, "IbNs_enrich.csv")
+pdf("IbNs_enrich.pdf")
+EnrichrBarPlot(
+  DATA,
+  outdir = "enrichr_plots", # name of output directory
+  n_terms = 10, # number of enriched terms to show (sometimes more are shown if there are ties)
+  plot_size = c(5,7), # width, height of the output .pdfs
+  logscale=TRUE # do you want to show the enrichment as a log scale?
+)
+dev.off()
+```
+
+## ExNs
+
+```{r}
+DATA <- readRDS("DATA_final.rds") 
+DATA <- SetIdent(DATA, value = "Celltypes") 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs","MG")) 
+DATA$Celltypes[WhichCells(DATA, idents = "MG")] <- "Microglia"
+DATA@reductions$UMAP <- DATA@reductions$umap.harmony30
+DATA@reductions$umap.harmony30 <- NULL 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs"))
+
+DATA <- SetupForWGCNA(
+  DATA,
+  gene_select = "fraction", # the gene selection approach
+  fraction = 0.05, # fraction of cells that a gene needs to be expressed in order to be included
+  wgcna_name = "AD_treatment" # the name of the hdWGCNA experiment
+)
+
+DATA <- MetacellsByGroups(DATA, group.by=c("Celltypes", "SampleID"), reduction = "harmony",k = 25, max_shared = 10, ident.group = "Celltypes")
+
+table(DATA$metacell_grouping)
+DATA <- NormalizeMetacells(DATA)
+DATA <- SetDatExpr(DATA,  group_name= "ExNs",group.by = "Celltypes",assay = "RNA", layer = 'data')
+DATA <- TestSoftPowers(DATA, networkType = 'signed')
+plot_list <- PlotSoftPowers(DATA)
+
+patchwork::wrap_plots(plot_list, ncol=2)
+
+DATA <- ConstructNetwork(
+  DATA,
+  tom_name = 'ExNs_tom', # name of the topoligical overlap matrix written to disk
+  overwrite_tom = T
+) #soft power =7
+
+# compute all MEs in the full single-cell dataset
+DATA <- ModuleEigengenes(
+ DATA,
+ group.by.vars="SampleID"
+)
+
+DATA <- ModuleConnectivity(DATA, group.by = "Celltypes",group_name = 'ExNs')
+DATA <- ResetModuleNames(
+  DATA,
+  new_name = "ExNs-M"
+)
+PlotKMEs(DATA, ncol=5)
+
+library(UCell)
+DATA <- ModuleExprScore(
+  DATA,
+  n_genes = 25,
+  method='UCell'
+)
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='hMEs', # plot the hMEs
+  order=TRUE # order so the points with highest hMEs are on top
+)
+
+# stitch together with patchwork
+pdf("hMEs_ExNs.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='scores', # plot the hub gene scores
+  order='shuffle', # order so cells are shuffled
+  ucell = TRUE # depending on Seurat vs UCell for gene scoring
+)
+pdf("Hub_ExNs.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+# stitch together with patchwork
+wrap_plots(plot_list, ncol=6)
+
+saveRDS(DATA, "ExNs_wgcna.rds")
+
+DATA <- readRDS("ExNs_wgcna.rds")
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'ExNs' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'ExNs' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+head(DMEs)
+
+pdf("DME_lolli_ExNs.pdf", width =10, height = 7)
+PlotDMEsLollipop(
+  DATA, 
+  DMEs, 
+  wgcna_name='AD_treatment', 
+  pvalue = "p_val_adj")
+dev.off()
+
+pdf("DME_vol_ExNs.pdf", width =10, height = 7)
+PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+dev.off()
+```
+
+
+```{r}
+
+
+
+modules <- GetModules(DATA)
+mods <- levels(modules$module); mods <- mods[mods != 'grey']
+
+# hubgene network
+g<-HubGeneNetworkPlot(
+  DATA,
+  n_hubs = 10, n_other=30,
+  edge_prop = 0.75,
+  mods = mods[c(15)], return_graph = T) 
+
+pdf("ExN-M5_net.pdf", height = 4, width = 4)
+# 2. Plot using ggraph (which uses standard ggplot2 syntax)
+ggraph(g, layout = "fr") + # 'fr' is a standard force-directed layout
+  
+  # --- 1. CHANGE EDGE COLOR ---
+  geom_edge_link(
+    color = "#f36569",     # Set your custom edge color here
+    alpha = 0.4,            # Adjust transparency
+    width = 0.5
+  ) + 
+  
+  # --- 2. CHANGE NODE COLOR ---
+  geom_node_point(
+    color = "#f36569",    # Set your custom node color here
+    size = 2.5               # Adjust node size
+  ) + 
+  
+  # --- 3. ADD A BOX FOR THE LABELS ---
+  geom_node_label(
+    aes(label = label),      # 'name' is usually the default igraph attribute for gene names
+    fill = "white",         # Background color of the label box
+    color = "black",        # Text color inside the box
+    repel = T,           # Pushes labels apart so they don't overlap
+    label.padding = unit(0.2, "lines"), # Size of the box around the text
+    label.r = unit(0.2, "lines"),       # Rounded corners for the box
+    size = 1.5
+  ) +
+  
+  # Clean up the background
+  theme_graph()
+dev.off()
+```
+
+### Enrichment
+
+```{r}
+DATA <- RunEnrichr(
+  DATA,
+  dbs=c("GO_Biological_Process_2025", "Reactome_Pathways_2024"),
+  max_genes = 100 # use max_genes = Inf to choose all genes
+)
+
+# retrieve the output table
+enrich_df <- GetEnrichrTable(DATA)
+
+# look at the results
+head(enrich_df)
+write.csv(enrich_df, "ExNs_enrich.csv")
+pdf("ExNs_enrich.pdf")
+EnrichrBarPlot(
+  DATA,
+  outdir = "enrichr_plots", # name of output directory
+  n_terms = 10, # number of enriched terms to show (sometimes more are shown if there are ties)
+  plot_size = c(5,7), # width, height of the output .pdfs
+  logscale=TRUE # do you want to show the enrichment as a log scale?
+)
+dev.off()
+
+```
+
+## MG
+
+```{r}
+DATA <- readRDS("DATA_final.rds") 
+DATA <- SetIdent(DATA, value = "Celltypes") 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs","MG")) 
+DATA$Celltypes[WhichCells(DATA, idents = "MG")] <- "Microglia"
+DATA@reductions$UMAP <- DATA@reductions$umap.harmony30
+DATA@reductions$umap.harmony30 <- NULL 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs"))
+
+DATA <- SetupForWGCNA(
+  DATA,
+  gene_select = "fraction", # the gene selection approach
+  fraction = 0.05, # fraction of cells that a gene needs to be expressed in order to be included
+  wgcna_name = "AD_treatment" # the name of the hdWGCNA experiment
+)
+
+DATA <- MetacellsByGroups(DATA, group.by=c("Celltypes", "SampleID"), reduction = "harmony",k = 25, max_shared = 10, ident.group = "Celltypes")
+
+table(DATA$metacell_grouping)
+DATA <- NormalizeMetacells(DATA)
+DATA <- SetDatExpr(DATA,  group_name= "Microglia",group.by = "Celltypes",assay = "RNA", layer = 'data')
+DATA <- TestSoftPowers(DATA, networkType = 'signed')
+plot_list <- PlotSoftPowers(DATA)
+
+patchwork::wrap_plots(plot_list, ncol=2)
+
+DATA <- ConstructNetwork(
+  DATA,
+  tom_name = 'Microglia_tom', # name of the topoligical overlap matrix written to disk
+  overwrite_tom = T
+) #soft power =7
+
+# compute all MEs in the full single-cell dataset
+DATA <- ModuleEigengenes(
+ DATA,
+ group.by.vars="SampleID"
+)
+
+DATA <- ModuleConnectivity(DATA, group.by = "Celltypes",group_name = 'Microglia')
+DATA <- ResetModuleNames(
+  DATA,
+  new_name = "Microglia-M"
+)
+PlotKMEs(DATA, ncol=5)
+
+library(UCell)
+DATA <- ModuleExprScore(
+  DATA,
+  n_genes = 25,
+  method='UCell'
+)
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='hMEs', # plot the hMEs
+  order=TRUE # order so the points with highest hMEs are on top
+)
+
+# stitch together with patchwork
+pdf("hMEs_Microglia.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='scores', # plot the hub gene scores
+  order='shuffle', # order so cells are shuffled
+  ucell = TRUE # depending on Seurat vs UCell for gene scoring
+)
+pdf("Hub_Microglia.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+# stitch together with patchwork
+wrap_plots(plot_list, ncol=6)
+
+saveRDS(DATA, "Microglia_wgcna.rds")
+DATA <- readRDS("Microglia_wgcna.rds")
+
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'Microglia' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'Microglia' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+head(DMEs)
+
+pdf("DME_lolli_microglia.pdf", width =10, height = 7)
+PlotDMEsLollipop(
+  DATA, 
+  DMEs, 
+  wgcna_name='AD_treatment', 
+  pvalue = "p_val_adj")
+dev.off()
+
+pdf("DME_vol_microglia.pdf", width =10, height = 7)
+PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+dev.off()
+```
+
+### Enrichment
+
+```{r}
+
+DATA <- RunEnrichr(
+  DATA,
+  dbs=c("GO_Biological_Process_2025", "Reactome_Pathways_2024"),
+  max_genes = 100 # use max_genes = Inf to choose all genes
+)
+
+# retrieve the output table
+enrich_df <- GetEnrichrTable(DATA)
+
+# look at the results
+head(enrich_df)
+write.csv(enrich_df, "Microglia_enrich.csv")
+pdf("Microglia_enrich.pdf")
+EnrichrBarPlot(
+  DATA,
+  outdir = "enrichr_plots", # name of output directory
+  n_terms = 10, # number of enriched terms to show (sometimes more are shown if there are ties)
+  plot_size = c(5,7), # width, height of the output .pdfs
+  logscale=TRUE # do you want to show the enrichment as a log scale?
+)
+dev.off()
+
+```
+
+## ASCs
+
+```{r}
+DATA <- readRDS("DATA_final.rds") 
+DATA <- SetIdent(DATA, value = "Celltypes") 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs","MG")) 
+DATA$Celltypes[WhichCells(DATA, idents = "MG")] <- "Microglia"
+DATA@reductions$UMAP <- DATA@reductions$umap.harmony30
+DATA@reductions$umap.harmony30 <- NULL 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs"))
+
+DATA <- SetupForWGCNA(
+  DATA,
+  gene_select = "fraction", # the gene selection approach
+  fraction = 0.05, # fraction of cells that a gene needs to be expressed in order to be included
+  wgcna_name = "AD_treatment" # the name of the hdWGCNA experiment
+)
+
+DATA <- MetacellsByGroups(DATA, group.by=c("Celltypes", "SampleID"), reduction = "harmony",k = 25, max_shared = 10, ident.group = "Celltypes")
+
+table(DATA$metacell_grouping)
+DATA <- NormalizeMetacells(DATA)
+DATA <- SetDatExpr(DATA,  group_name= "ASCs",group.by = "Celltypes",assay = "RNA", layer = 'data')
+DATA <- TestSoftPowers(DATA, networkType = 'signed')
+plot_list <- PlotSoftPowers(DATA)
+
+patchwork::wrap_plots(plot_list, ncol=2)
+
+DATA <- ConstructNetwork(
+  DATA,
+  tom_name = 'ASCs_tom', # name of the topoligical overlap matrix written to disk
+  overwrite_tom = T
+) #soft power =7
+
+# compute all MEs in the full single-cell dataset
+DATA <- ModuleEigengenes(
+ DATA,
+ group.by.vars="SampleID"
+)
+
+DATA <- ModuleConnectivity(DATA, group.by = "Celltypes",group_name = 'ASCs')
+DATA <- ResetModuleNames(
+  DATA,
+  new_name = "ASCs-M"
+)
+PlotKMEs(DATA, ncol=5)
+
+library(UCell)
+DATA <- ModuleExprScore(
+  DATA,
+  n_genes = 25,
+  method='UCell'
+)
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='hMEs', # plot the hMEs
+  order=TRUE # order so the points with highest hMEs are on top
+)
+
+# stitch together with patchwork
+pdf("hMEs_ASCs.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='scores', # plot the hub gene scores
+  order='shuffle', # order so cells are shuffled
+  ucell = TRUE # depending on Seurat vs UCell for gene scoring
+)
+pdf("Hub_ASCs.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+# stitch together with patchwork
+patchwork::wrap_plots(plot_list, ncol=6)
+
+saveRDS(DATA, "ASCs_wgcna.rds")
+#DATA <- readRDS("Microglia_wgcna.rds")
+
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'ASCs' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'ASCs' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+head(DMEs)
+
+pdf("DME_lolli_ASCs.pdf", width =10, height = 7)
+PlotDMEsLollipop(
+  DATA, 
+  DMEs, 
+  wgcna_name='AD_treatment', 
+  pvalue = "p_val_adj")
+dev.off()
+
+pdf("DME_vol_ASCs.pdf", width =10, height = 7)
+PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+dev.off()
+```
+
+### Enrichment
+
+```{r}
+
+DATA <- RunEnrichr(
+  DATA,
+  dbs=c("GO_Biological_Process_2025", "Reactome_Pathways_2024"),
+  max_genes = Inf # use max_genes = Inf to choose all genes
+)
+
+# retrieve the output table
+enrich_df <- GetEnrichrTable(DATA)
+
+# look at the results
+head(enrich_df)
+write.csv(enrich_df, "ASCs_enrich.csv")
+pdf("ASCs_enrich.pdf")
+EnrichrBarPlot(
+  DATA,
+  outdir = "enrichr_plots", # name of output directory
+  n_terms = 10, # number of enriched terms to show (sometimes more are shown if there are ties)
+  plot_size = c(5,7), # width, height of the output .pdfs
+  logscale=TRUE # do you want to show the enrichment as a log scale?
+)
+dev.off()
+
+```
+
+## OLs
+
+```{r}
+DATA <- readRDS("DATA_final.rds") 
+DATA <- SetIdent(DATA, value = "Celltypes") 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs","MG")) 
+DATA$Celltypes[WhichCells(DATA, idents = "MG")] <- "Microglia"
+DATA@reductions$UMAP <- DATA@reductions$umap.harmony30
+DATA@reductions$umap.harmony30 <- NULL 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs"))
+
+DATA <- SetupForWGCNA(
+  DATA,
+  gene_select = "fraction", # the gene selection approach
+  fraction = 0.05, # fraction of cells that a gene needs to be expressed in order to be included
+  wgcna_name = "AD_treatment" # the name of the hdWGCNA experiment
+)
+
+DATA <- MetacellsByGroups(DATA, group.by=c("Celltypes", "SampleID"), reduction = "harmony",k = 25, max_shared = 10, ident.group = "Celltypes")
+
+table(DATA$metacell_grouping)
+DATA <- NormalizeMetacells(DATA)
+DATA <- SetDatExpr(DATA,  group_name= "OLs",group.by = "Celltypes",assay = "RNA", layer = 'data')
+DATA <- TestSoftPowers(DATA, networkType = 'signed')
+plot_list <- PlotSoftPowers(DATA)
+
+patchwork::wrap_plots(plot_list, ncol=2)
+
+DATA <- ConstructNetwork(
+  DATA,
+  tom_name = 'OLs_tom', # name of the topoligical overlap matrix written to disk
+  overwrite_tom = T
+) #soft power =7
+
+# compute all MEs in the full single-cell dataset
+DATA <- ModuleEigengenes(
+ DATA,
+ group.by.vars="SampleID"
+)
+
+DATA <- ModuleConnectivity(DATA, group.by = "Celltypes",group_name = 'OLs')
+DATA <- ResetModuleNames(
+  DATA,
+  new_name = "OLs-M"
+)
+PlotKMEs(DATA, ncol=5)
+
+library(UCell)
+DATA <- ModuleExprScore(
+  DATA,
+  n_genes = 25,
+  method='UCell'
+)
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='hMEs', # plot the hMEs
+  order=TRUE # order so the points with highest hMEs are on top
+)
+
+# stitch together with patchwork
+pdf("hMEs_OLs.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='scores', # plot the hub gene scores
+  order='shuffle', # order so cells are shuffled
+  ucell = TRUE # depending on Seurat vs UCell for gene scoring
+)
+pdf("Hub_OLs.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+# stitch together with patchwork
+patchwork::wrap_plots(plot_list, ncol=6)
+
+saveRDS(DATA, "OLs_wgcna.rds")
+#DATA <- readRDS("Microglia_wgcna.rds")
+
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'OLs' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'OLs' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+head(DMEs)
+
+pdf("DME_lolli_OLs.pdf", width =10, height = 7)
+PlotDMEsLollipop(
+  DATA, 
+  DMEs, 
+  wgcna_name='AD_treatment', 
+  pvalue = "p_val_adj")
+dev.off()
+
+pdf("DME_vol_OLs.pdf", width =10, height = 7)
+PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+dev.off()
+```
+
+### Enrichment
+
+```{r}
+DATA <- RunEnrichr(
+  DATA,
+  dbs=c("GO_Biological_Process_2025", "Reactome_Pathways_2024"),
+  max_genes = Inf # use max_genes = Inf to choose all genes
+)
+
+# retrieve the output table
+enrich_df <- GetEnrichrTable(DATA)
+
+# look at the results
+head(enrich_df)
+write.csv(enrich_df, "OL_enrich.csv")
+pdf("OL_enrich.pdf")
+EnrichrBarPlot(
+  DATA,
+  outdir = "enrichr_plots", # name of output directory
+  n_terms = 10, # number of enriched terms to show (sometimes more are shown if there are ties)
+  plot_size = c(5,7), # width, height of the output .pdfs
+  logscale=TRUE # do you want to show the enrichment as a log scale?
+)
+dev.off()
+```
+
+## OPCs
+
+```{r}
+DATA <- readRDS("DATA_final.rds") 
+DATA <- SetIdent(DATA, value = "Celltypes") 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs","MG")) 
+DATA$Celltypes[WhichCells(DATA, idents = "MG")] <- "Microglia"
+DATA@reductions$UMAP <- DATA@reductions$umap.harmony30
+DATA@reductions$umap.harmony30 <- NULL 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs"))
+
+DATA <- SetupForWGCNA(
+  DATA,
+  gene_select = "fraction", # the gene selection approach
+  fraction = 0.05, # fraction of cells that a gene needs to be expressed in order to be included
+  wgcna_name = "AD_treatment" # the name of the hdWGCNA experiment
+)
+
+DATA <- MetacellsByGroups(DATA, group.by=c("Celltypes", "SampleID"), reduction = "harmony",k = 25, max_shared = 10, ident.group = "Celltypes")
+
+table(DATA$metacell_grouping)
+DATA <- NormalizeMetacells(DATA)
+DATA <- SetDatExpr(DATA,  group_name= "OPCs",group.by = "Celltypes",assay = "RNA", layer = 'data')
+DATA <- TestSoftPowers(DATA, networkType = 'signed')
+plot_list <- PlotSoftPowers(DATA)
+
+patchwork::wrap_plots(plot_list, ncol=2)
+
+DATA <- ConstructNetwork(
+  DATA,
+  tom_name = 'OPCs_tom', # name of the topoligical overlap matrix written to disk
+  overwrite_tom = T
+) #soft power =7
+
+# compute all MEs in the full single-cell dataset
+DATA <- ModuleEigengenes(
+ DATA,
+ group.by.vars="SampleID"
+)
+
+DATA <- ModuleConnectivity(DATA, group.by = "Celltypes",group_name = 'OPCs')
+DATA <- ResetModuleNames(
+  DATA,
+  new_name = "OLs-M"
+)
+PlotKMEs(DATA, ncol=5)
+
+library(UCell)
+DATA <- ModuleExprScore(
+  DATA,
+  n_genes = 25,
+  method='UCell'
+)
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='hMEs', # plot the hMEs
+  order=TRUE # order so the points with highest hMEs are on top
+)
+
+# stitch together with patchwork
+pdf("hMEs_OPCs.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+plot_list <- ModuleFeaturePlot(
+  DATA,reduction = "UMAP",
+  features='scores', # plot the hub gene scores
+  order='shuffle', # order so cells are shuffled
+  ucell = TRUE # depending on Seurat vs UCell for gene scoring
+)
+pdf("Hub_OPCs.pdf", width = 10, height = 6)
+patchwork::wrap_plots(c(plot_list,DimPlot(DATA,reduction = "UMAP", group.by = "Celltypes")), ncol=3)
+dev.off()
+
+# stitch together with patchwork
+patchwork::wrap_plots(plot_list, ncol=6)
+
+saveRDS(DATA, "OPCs_wgcna.rds")
+#DATA <- readRDS("Microglia_wgcna.rds")
+
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'OPCs' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'OPCs' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+head(DMEs)
+
+pdf("DME_lolli_OPCs.pdf", width =10, height = 7)
+PlotDMEsLollipop(
+  DATA, 
+  DMEs, 
+  wgcna_name='AD_treatment', 
+  pvalue = "p_val_adj")
+dev.off()
+
+pdf("DME_vol_OPCs.pdf", width =10, height = 7)
+PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+dev.off()
+```
+
+### Enrichment
+
+```{r}
+DATA <- RunEnrichr(
+  DATA,
+  dbs=c("GO_Biological_Process_2025", "Reactome_Pathways_2024"),
+  max_genes = Inf # use max_genes = Inf to choose all genes
+)
+
+# retrieve the output table
+enrich_df <- GetEnrichrTable(DATA)
+
+# look at the results
+head(enrich_df)
+write.csv(enrich_df, "OPCs_enrich.csv")
+pdf("OPCs_enrich.pdf")
+EnrichrBarPlot(
+  DATA,
+  outdir = "enrichr_plots", # name of output directory
+  n_terms = 10, # number of enriched terms to show (sometimes more are shown if there are ties)
+  plot_size = c(5,7), # width, height of the output .pdfs
+  logscale=TRUE # do you want to show the enrichment as a log scale?
+)
+dev.off()
+```
+
+## geneNMF
+
+```{r IbNs}
+library("GeneNMF")
+
+DATA <- readRDS("DATA_final.rds") 
+DATA <- SetIdent(DATA, value = "Celltypes") 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs","MG")) 
+DATA$Celltypes[WhichCells(DATA, idents = "MG")] <- "Microglia"
+DATA@reductions$UMAP <- DATA@reductions$umap.harmony30
+DATA@reductions$umap.harmony30 <- NULL 
+DATA$Celltypes <-factor(x= DATA$Celltypes, levels = c("INPs", "IbNs", "ExNs", "OPCs", "OLs", "ASCs", "Microglia", "BAMs", "Monocytes","PCs","ABCs", "VLMCs"))
+
+DATA <- subset(DATA, idents = "IbNs")
+
+# 1. Split your object by condition
+data_list <- SplitObject(DATA, split.by = "Condition")
+
+geneNMF.programs <- multiNMF(data_list, assay="RNA", k=4:10, min.exp = 0.05, )
+
+geneNMF.metaprograms <- getMetaPrograms(geneNMF.programs,
+                                        metric = "cosine",
+                                        specificity.weight = 5,
+                                        weight.explained = 0.5,
+                                        nMP=10,
+                                        min.confidence = 0.7)
+
+pdf("IbNs_NMF.pdf", width = 10, height = 10)
+plotMetaPrograms(geneNMF.metaprograms,similarity.cutoff = c(0.1,1))
+dev.off()
+
+DATA <- AddModuleScore_UCell(
+  obj = DATA, 
+  features = geneNMF.metaprograms$metaprograms.genes$MP9,
+  name = "_MP9" # This adds a suffix to the metadata column names
+)
+
+DATA <- AddModuleScore_UCell(
+  obj = DATA, 
+  features = geneNMF.metaprograms$metaprograms.genes$MP10,
+  name = "_MP10" # This adds a suffix to the metadata column names
+)
+
+DATA <- AddModuleScore_UCell(
+  obj = DATA, 
+  features = geneNMF.metaprograms$metaprograms.genes$MP6,
+  name = "_MP6" # This adds a suffix to the metadata column names
+)
+
+
+pdf("IbNs_NMF_score.pdf", width = 5, height = 3)
+VlnPlot(DATA, features = c("signature_1_MP6","signature_1_MP9"), group.by = "Condition")
+VlnPlot(DATA, features = c("signature_1_MP6","signature_1_MP9"), group.by = "Condition", pt.size = 0)
+DotPlot(DATA, features = c("signature_1_MP6","signature_1_MP9"), group.by = "Condition") + coord_flip()
+dev.off()
+
+pdf("IbNs_MP6.pdf", width = 8, height = 9)
+VlnPlot(DATA, features = c("Cpa6", "Dnah11", "Adamts19", "Lgr6", "Lgr5", "Vipr2", "Syt10", "ENSMUSG00000120491", "Kank3", "Gcnt1", "Stard8", "Gm20658", "Pparg", "Ccn4", "Frmd7", "Trdn", "2900079G21Rik", "9330158H04Rik", "Meis1", "Crhr1", "Ptpn14", "Shisa8", "A930009A15Rik", "Rai14", "Tshz1", "Cpne4", "Csgalnact1", "Abi3bp", "Fbn2", "Plekha2", "Pbx3"), group.by = "Condition", stack = T, flip = T)
+dev.off()
+
+pdf("IbNs_MP6_2.pdf", width = 12, height = 9)
+VlnPlot(DATA, features = c("Cpa6", "Dnah11", "Adamts19", "Lgr6", "Lgr5", "Vipr2", "Syt10", "ENSMUSG00000120491", "Kank3", "Gcnt1", "Stard8", "Gm20658", "Pparg", "Ccn4", "Frmd7", "Trdn", "2900079G21Rik", "9330158H04Rik", "Meis1", "Crhr1", "Ptpn14", "Shisa8", "A930009A15Rik", "Rai14", "Tshz1", "Cpne4", "Csgalnact1", "Abi3bp", "Fbn2", "Plekha2", "Pbx3"), group.by = "SampleID", stack = T, flip = T)
+dev.off()
+```
+
+## Aggregate
+
+```{r}
+
+DATA <- readRDS("ExNs_wgcna.rds")
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'ExNs' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'ExNs' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+ExNs <- PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+
+ExNs <- ExNs@data %>% mutate(Celltypes = "ExNs")
+
+DATA <- readRDS("IbNs_wgcna.rds")
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'IbNs' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'IbNs' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+IbNs <- PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+
+IbNs <- IbNs@data %>% mutate(Celltypes = "IbNs")
+
+DATA <- readRDS("ASCs_wgcna.rds")
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'ASCs' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'ASCs' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+ASCs <- PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+
+ASCs <- ASCs@data %>% mutate(Celltypes = "ASCs")
+
+
+DATA <- readRDS("OLs_wgcna.rds")
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'OLs' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'OLs' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+OLs <- PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+
+OLs <- OLs@data %>% mutate(Celltypes = "OLs")
+
+DATA <- readRDS("Microglia_wgcna.rds")
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'Microglia' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'Microglia' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+Microglia <- PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+
+Microglia <- Microglia@data %>% mutate(Celltypes = "Microglia")
+
+DATA <- readRDS("OPCs_wgcna.rds")
+Ctrl <- DATA@meta.data %>% subset(Celltypes == 'OPCs' & Condition == 'Mu93') %>% rownames
+Treated <- DATA@meta.data %>% subset(Celltypes == 'OPCs' & Condition == 'MuLI') %>% rownames
+
+DMEs <- FindDMEs(
+  DATA,
+  barcodes1 = Ctrl,
+  barcodes2 = Treated,
+  test.use='wilcox',
+  wgcna_name='AD_treatment'
+)
+
+OPCs <- PlotDMEsVolcano(
+  DATA,
+  DMEs,
+  wgcna_name = 'AD_treatment'
+)
+
+OPCs <- OPCs@data %>% mutate(Celltypes = "OPCs")
+
+```
+
+```{r}
+data <- bind_rows(ExNs, IbNs, Microglia, ASCs, OLs, OPCs)
+data <- data %>%
+  mutate(
+    neglog10_p = -log10(p_val_adj),
+    sig = neglog10_p >= 1.3 & abs(avg_log2FC) >= 0.5
+  )
+
+
+
+ggplot(data, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+
+  # 🔹 Grey background for non-significant region
+  annotate(
+    "rect",
+    xmin = -Inf, xmax = Inf,
+    ymin = -Inf, ymax = 1.3,
+    fill = "grey80",
+    alpha = 0.5
+  ) +
+
+  # 🔹 Points
+   geom_point(
+    data = data %>% filter(!sig),
+    aes(color = Celltypes),
+    size = 1.5,
+    alpha = 0.6
+  ) +
+
+  # 🔹 highlighted points (significant)
+  geom_point(
+    data = data %>% filter(sig),
+    aes(color = Celltypes),
+    size = 3,
+    alpha = 0.9
+  ) +
+  ggrepel::geom_text_repel(
+    data = data%>% filter(sig),
+    aes(label = anno),
+    size = 3
+  )+
+
+  # 🔹 Vertical dashed lines (logFC thresholds)
+  geom_vline(xintercept = c(-0.5, 0.5),
+             linetype = "dashed",
+             color = "grey") +
+
+  # 🔹 Horizontal dashed line (p-value threshold)
+  #geom_hline(yintercept = 1.3,linetype = "dashed",color = "grey") +
+
+  # 🔹 Style
+  theme_classic() +
+  labs(
+    x = "avg_log2FC",
+    y = "-log10(adj. p-value)",
+    title = "Combined Volcano Plot"
+  )
+
+ggsave("combined_volcano.pdf", width = 8, height = 6)
+```
+
+
